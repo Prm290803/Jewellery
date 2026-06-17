@@ -716,7 +716,7 @@ import {
   AlertCircle, RefreshCw
 } from "lucide-react";
 
-const API_URL = 'http://localhost:5000/api';
+const API_URL = 'https://jewellery-m5ia.onrender.com/';
 
 export default function Calculator() {
   // Main calculator state
