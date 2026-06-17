@@ -1132,7 +1132,7 @@ export default function Calculator() {
             Suvarna Shilpi Jewellers · Premium Calculator
             <Gem className="w-3 h-3 text-[#2FA084]" />
           </p>
-          <p className="mt-1 opacity-70">Advanced Karat & Purity Calculation Engine</p>
+          <p className="mt-1 opacity-70">Build Crew</p>
         </footer>
       </div>
     </div>
