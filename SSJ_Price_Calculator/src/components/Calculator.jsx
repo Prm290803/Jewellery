@@ -424,6 +424,76 @@ export default function Calculator() {
     }
   };
 
+  // Mobile card view for quotations
+  const QuotationCard = ({ q, index, isDeleted = false }) => {
+    return (
+      <div className="bg-white rounded-xl p-4 mb-3 shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
+        <div className="flex justify-between items-start mb-2">
+          <div className="flex-1">
+            <div className="font-semibold text-gray-800 text-sm">{q.customerName}</div>
+            <div className="text-xs text-gray-500">{q.customerPhone}</div>
+          </div>
+          <div className="text-right">
+            <div className="font-bold text-[#1F6F5F] text-sm">₹{Number(q.total).toFixed(2)}</div>
+            <div className="text-xs text-gray-400">{q.date}</div>
+          </div>
+        </div>
+        
+        <div className="flex flex-wrap gap-2 text-xs text-gray-600 mb-3">
+          <span className="px-2 py-1 bg-[#6FCF97]/10 text-[#1F6F5F] rounded-full">
+            {q.metal}
+          </span>
+          <span>{q.karat}{q.metal === "Gold" ? "K" : "%"}</span>
+          <span>{q.weight}g</span>
+          {q.staffName && <span>👤 {q.staffName}</span>}
+          {isDeleted && q.deletedAt && (
+            <span className="text-red-500">🗑️ {new Date(q.deletedAt).toLocaleDateString()}</span>
+          )}
+        </div>
+        
+        <div className="flex gap-2">
+          {!isDeleted ? (
+            <>
+              <button
+                onClick={() => loadQuotation(q)}
+                className="flex-1 bg-[#2FA084] hover:bg-[#1F6F5F] text-white px-3 py-1.5 rounded-lg text-xs transition-all duration-300 flex items-center justify-center gap-1"
+              >
+                <Pen className="w-3 h-3" /> Edit
+              </button>
+              <button
+                onClick={() => printQuotation(q)}
+                className="flex-1 bg-[#6FCF97] hover:bg-[#2FA084] text-white px-3 py-1.5 rounded-lg text-xs transition-all duration-300 flex items-center justify-center gap-1"
+              >
+                <Printer className="w-3 h-3" /> Print
+              </button>
+              <button
+                onClick={() => deleteQuotation(q.id)}
+                className="flex-1 bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded-lg text-xs transition-all duration-300 flex items-center justify-center gap-1"
+              >
+                <Trash2 className="w-3 h-3" /> Delete
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={() => restoreQuotation(q.id)}
+                className="flex-1 bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded-lg text-xs transition-all duration-300 flex items-center justify-center gap-1"
+              >
+                <RotateCcw className="w-3 h-3" /> Restore
+              </button>
+              <button
+                onClick={() => permanentDeleteQuotation(q.id)}
+                className="flex-1 bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded-lg text-xs transition-all duration-300 flex items-center justify-center gap-1"
+              >
+                <Trash2 className="w-3 h-3" /> Delete
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-[#EEEEEE] text-gray-800 font-sans antialiased">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
@@ -474,12 +544,12 @@ export default function Calculator() {
 
         {/* Recycle Bin Panel */}
         {showRecycleBin && (
-          <div className="bg-white rounded-3xl p-5 sm:p-7 mb-8 shadow-lg border border-red-200 overflow-x-auto">
+          <div className="bg-white rounded-3xl p-5 sm:p-7 mb-8 shadow-lg border border-red-200">
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-xl font-semibold text-red-600 flex items-center gap-3">
                 <Trash className="w-5 h-5" />
                 Recycle Bin
-                <span className="text-xs text-gray-500 font-normal ml-2">
+                <span className="text-xs text-gray-500 font-normal ml-2 hidden sm:inline">
                   (Records automatically deleted after 7 days)
                 </span>
               </h2>
@@ -489,7 +559,8 @@ export default function Calculator() {
                   className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1.5 rounded-lg transition-all duration-300 flex items-center gap-1"
                 >
                   <RefreshCw className="w-3 h-3" />
-                  Cleanup Old
+                  <span className="hidden sm:inline">Cleanup Old</span>
+                  <span className="sm:hidden">Cleanup</span>
                 </button>
                 <span className="text-xs text-[#2FA084] bg-[#6FCF97]/10 px-3 py-1 rounded-full border border-[#6FCF97]/20">
                   {deletedQuotations.length} Records
@@ -508,71 +579,81 @@ export default function Calculator() {
                 <p className="text-sm">No records in recycle bin</p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-gradient-to-r from-red-500 to-red-600 text-white">
-                      <th className="px-4 py-3 text-left rounded-tl-xl">#</th>
-                      <th className="px-4 py-3 text-left">Deleted Date</th>
-                      <th className="px-4 py-3 text-left">Customer</th>
-                      <th className="px-4 py-3 text-left">Phone</th>
-                      <th className="px-4 py-3 text-left">Staff</th>
-                      <th className="px-4 py-3 text-left">Metal</th>
-                      <th className="px-4 py-3 text-left">Total (₹)</th>
-                      <th className="px-4 py-3 text-center rounded-tr-xl">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {deletedQuotations.map((q, index) => (
-                      <tr 
-                        key={q.id} 
-                        className={`border-b border-gray-200 hover:bg-red-50 transition-colors ${
-                          index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
-                        }`}
-                      >
-                        <td className="px-4 py-3 text-gray-500">{index + 1}</td>
-                        <td className="px-4 py-3 text-gray-600 text-xs">
-                          {q.deletedAt ? new Date(q.deletedAt).toLocaleString() : '-'}
-                        </td>
-                        <td className="px-4 py-3 font-medium text-gray-800">{q.customerName}</td>
-                        <td className="px-4 py-3 text-gray-600">{q.customerPhone}</td>
-                        <td className="px-4 py-3 text-gray-600">{q.staffName || '-'}</td>
-                        <td className="px-4 py-3">
-                          <span className="px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs font-medium">
-                            {q.metal}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 font-semibold text-red-600">₹{Number(q.total).toFixed(2)}</td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center justify-center gap-2">
-                            <button
-                              onClick={() => restoreQuotation(q.id)}
-                              className="bg-green-500 hover:bg-green-600 text-white p-1.5 rounded-lg transition-all duration-300"
-                              title="Restore"
-                            >
-                              <RotateCcw className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => permanentDeleteQuotation(q.id)}
-                              className="bg-red-500 hover:bg-red-600 text-white p-1.5 rounded-lg transition-all duration-300"
-                              title="Permanent Delete"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </td>
+              <>
+                {/* Desktop Table View */}
+                <div className="hidden md:block overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gradient-to-r from-red-500 to-red-600 text-white">
+                        <th className="px-4 py-3 text-left rounded-tl-xl">#</th>
+                        <th className="px-4 py-3 text-left">Deleted Date</th>
+                        <th className="px-4 py-3 text-left">Customer</th>
+                        <th className="px-4 py-3 text-left">Phone</th>
+                        <th className="px-4 py-3 text-left">Staff</th>
+                        <th className="px-4 py-3 text-left">Metal</th>
+                        <th className="px-4 py-3 text-left">Total (₹)</th>
+                        <th className="px-4 py-3 text-center rounded-tr-xl">Actions</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {deletedQuotations.map((q, index) => (
+                        <tr 
+                          key={q.id} 
+                          className={`border-b border-gray-200 hover:bg-red-50 transition-colors ${
+                            index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
+                          }`}
+                        >
+                          <td className="px-4 py-3 text-gray-500">{index + 1}</td>
+                          <td className="px-4 py-3 text-gray-600 text-xs">
+                            {q.deletedAt ? new Date(q.deletedAt).toLocaleString() : '-'}
+                          </td>
+                          <td className="px-4 py-3 font-medium text-gray-800">{q.customerName}</td>
+                          <td className="px-4 py-3 text-gray-600">{q.customerPhone}</td>
+                          <td className="px-4 py-3 text-gray-600">{q.staffName || '-'}</td>
+                          <td className="px-4 py-3">
+                            <span className="px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs font-medium">
+                              {q.metal}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 font-semibold text-red-600">₹{Number(q.total).toFixed(2)}</td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center justify-center gap-2">
+                              <button
+                                onClick={() => restoreQuotation(q.id)}
+                                className="bg-green-500 hover:bg-green-600 text-white p-1.5 rounded-lg transition-all duration-300"
+                                title="Restore"
+                              >
+                                <RotateCcw className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => permanentDeleteQuotation(q.id)}
+                                className="bg-red-500 hover:bg-red-600 text-white p-1.5 rounded-lg transition-all duration-300"
+                                title="Permanent Delete"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Mobile Card View */}
+                <div className="md:hidden">
+                  {deletedQuotations.map((q, index) => (
+                    <QuotationCard key={q.id} q={q} index={index} isDeleted={true} />
+                  ))}
+                </div>
+              </>
             )}
           </div>
         )}
 
-        {/* History Panel - Table View */}
+        {/* History Panel */}
         {showHistory && (
-          <div className="bg-white rounded-3xl p-5 sm:p-7 mb-8 shadow-lg border border-[#6FCF97]/20 overflow-x-auto">
+          <div className="bg-white rounded-3xl p-5 sm:p-7 mb-8 shadow-lg border border-[#6FCF97]/20">
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-xl font-semibold text-[#1F6F5F] flex items-center gap-3">
                 <Scroll className="w-5 h-5 text-[#2FA084]" />
@@ -595,73 +676,83 @@ export default function Calculator() {
                 <p className="text-sm">No quotations saved yet</p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-gradient-to-r from-[#1F6F5F] to-[#2FA084] text-white">
-                      <th className="px-4 py-3 text-left rounded-tl-xl">#</th>
-                      <th className="px-4 py-3 text-left">Date</th>
-                      <th className="px-4 py-3 text-left">Customer</th>
-                      <th className="px-4 py-3 text-left">Phone</th>
-                      <th className="px-4 py-3 text-left">Staff</th>
-                      <th className="px-4 py-3 text-left">Metal</th>
-                      <th className="px-4 py-3 text-left">Karat</th>
-                      <th className="px-4 py-3 text-left">Weight</th>
-                      <th className="px-4 py-3 text-left">Total (₹)</th>
-                      <th className="px-4 py-3 text-center rounded-tr-xl">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {savedQuotations.map((q, index) => (
-                      <tr 
-                        key={q.id} 
-                        className={`border-b border-[#6FCF97]/10 hover:bg-[#6FCF97]/5 transition-colors ${
-                          index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
-                        }`}
-                      >
-                        <td className="px-4 py-3 text-gray-500">{index + 1}</td>
-                        <td className="px-4 py-3 text-gray-600 text-xs">{q.date}</td>
-                        <td className="px-4 py-3 font-medium text-gray-800">{q.customerName}</td>
-                        <td className="px-4 py-3 text-gray-600">{q.customerPhone}</td>
-                        <td className="px-4 py-3 text-gray-600">{q.staffName || '-'}</td>
-                        <td className="px-4 py-3">
-                          <span className="px-2 py-1 bg-[#6FCF97]/10 text-[#1F6F5F] rounded-full text-xs font-medium">
-                            {q.metal}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-gray-600">{q.karat}{q.metal === "Gold" ? "K" : "%"}</td>
-                        <td className="px-4 py-3 text-gray-600">{q.weight}g</td>
-                        <td className="px-4 py-3 font-semibold text-[#1F6F5F]">₹{Number(q.total).toFixed(2)}</td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center justify-center gap-2">
-                            <button
-                              onClick={() => loadQuotation(q)}
-                              className="bg-[#2FA084] hover:bg-[#1F6F5F] text-white p-1.5 rounded-lg transition-all duration-300"
-                              title="Edit"
-                            >
-                              <Pen className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => printQuotation(q)}
-                              className="bg-[#6FCF97] hover:bg-[#2FA084] text-white p-1.5 rounded-lg transition-all duration-300"
-                              title="Print"
-                            >
-                              <Printer className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => deleteQuotation(q.id)}
-                              className="bg-red-500 hover:bg-red-600 text-white p-1.5 rounded-lg transition-all duration-300"
-                              title="Delete"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </td>
+              <>
+                {/* Desktop Table View */}
+                <div className="hidden md:block overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gradient-to-r from-[#1F6F5F] to-[#2FA084] text-white">
+                        <th className="px-4 py-3 text-left rounded-tl-xl">#</th>
+                        <th className="px-4 py-3 text-left">Date</th>
+                        <th className="px-4 py-3 text-left">Customer</th>
+                        <th className="px-4 py-3 text-left">Phone</th>
+                        <th className="px-4 py-3 text-left">Staff</th>
+                        <th className="px-4 py-3 text-left">Metal</th>
+                        <th className="px-4 py-3 text-left">Karat</th>
+                        <th className="px-4 py-3 text-left">Weight</th>
+                        <th className="px-4 py-3 text-left">Total (₹)</th>
+                        <th className="px-4 py-3 text-center rounded-tr-xl">Actions</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {savedQuotations.map((q, index) => (
+                        <tr 
+                          key={q.id} 
+                          className={`border-b border-[#6FCF97]/10 hover:bg-[#6FCF97]/5 transition-colors ${
+                            index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
+                          }`}
+                        >
+                          <td className="px-4 py-3 text-gray-500">{index + 1}</td>
+                          <td className="px-4 py-3 text-gray-600 text-xs">{q.date}</td>
+                          <td className="px-4 py-3 font-medium text-gray-800">{q.customerName}</td>
+                          <td className="px-4 py-3 text-gray-600">{q.customerPhone}</td>
+                          <td className="px-4 py-3 text-gray-600">{q.staffName || '-'}</td>
+                          <td className="px-4 py-3">
+                            <span className="px-2 py-1 bg-[#6FCF97]/10 text-[#1F6F5F] rounded-full text-xs font-medium">
+                              {q.metal}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-gray-600">{q.karat}{q.metal === "Gold" ? "K" : "%"}</td>
+                          <td className="px-4 py-3 text-gray-600">{q.weight}g</td>
+                          <td className="px-4 py-3 font-semibold text-[#1F6F5F]">₹{Number(q.total).toFixed(2)}</td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center justify-center gap-2">
+                              <button
+                                onClick={() => loadQuotation(q)}
+                                className="bg-[#2FA084] hover:bg-[#1F6F5F] text-white p-1.5 rounded-lg transition-all duration-300"
+                                title="Edit"
+                              >
+                                <Pen className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => printQuotation(q)}
+                                className="bg-[#6FCF97] hover:bg-[#2FA084] text-white p-1.5 rounded-lg transition-all duration-300"
+                                title="Print"
+                              >
+                                <Printer className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => deleteQuotation(q.id)}
+                                className="bg-red-500 hover:bg-red-600 text-white p-1.5 rounded-lg transition-all duration-300"
+                                title="Delete"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Mobile Card View */}
+                <div className="md:hidden">
+                  {savedQuotations.map((q, index) => (
+                    <QuotationCard key={q.id} q={q} index={index} isDeleted={false} />
+                  ))}
+                </div>
+              </>
             )}
           </div>
         )}
