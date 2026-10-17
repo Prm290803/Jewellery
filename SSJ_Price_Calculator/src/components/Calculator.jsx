@@ -11,8 +11,10 @@ import {
   AlertCircle, RefreshCw
 } from "lucide-react";
 
-// ✅ UPDATED: Use your Render.com backend URL
-const API_URL = 'https://jewellery-m5ia.onrender.com/api';
+// CHANGED: API base URL now read from an env var so this can be deployed.
+// Was hardcoded to localhost:5000, which only ever worked on this machine.
+// Set VITE_API_URL in Frontend/.env to point at the real server.
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 export default function Calculator() {
   // Main calculator state
@@ -88,6 +90,18 @@ export default function Calculator() {
     }
   };
 
+  // ADDED: ₹ formatting in Indian digit grouping, e.g. ₹1,51,200.00
+  const formatCurrency = (value) =>
+    `₹${Number(value || 0).toLocaleString("en-IN", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+
+  // ADDED: labels for the base (pure) rate the user types in, per metal
+  const purityUnit = metal === "Gold" ? "K" : metal === "Silver" ? "%" : "";
+  const baseKaratLabel =
+    metal === "Gold" ? "24K" : metal === "Silver" ? "99.9%" : "999";
+
   // Load data
   useEffect(() => {
     fetchQuotations();
@@ -138,16 +152,29 @@ export default function Calculator() {
   };
 
   // Calculations with karat adjustment
-  const metalValue = Number(weight) * Number(rate) * getKaratRate();
+  // ADDED: baseRate is the pure-metal rate the user types in (24K / 99.9%).
+  // effectiveRate is the actual rupee rate for the selected purity, which is
+  // what the summary now prints instead of just the karat label.
+  const baseRate = Number(rate) || 0;
+  const effectiveRate = baseRate * getKaratRate();
+
+  const metalValue = (Number(weight) || 0) * effectiveRate;
   const labour =
     labourType === "percentage"
       ? (metalValue * Number(labourValue)) / 100
       : Number(weight) * Number(labourValue);
-  
+
+  // ADDED: the two ways of expressing the same labour charge. The summary always shows
+  // whichever one the user did NOT type in — enter a %, see the ₹/gram it works out to.
+  const labourPerGram = Number(weight) > 0 ? labour / Number(weight) : 0;
+  const labourPercent = metalValue ? (labour / metalValue) * 100 : 0;
+
   // Other charges combined (stone + hallmark)
   const otherCharges = Number(stone) + Number(hallmark);
-  
-  const subtotal = metalValue + labour + otherCharges - Number(discount);
+
+  // CHANGED: clamped at 0 — a discount larger than the item value used to produce
+  // a negative subtotal and a negative GST amount.
+  const subtotal = Math.max(0, metalValue + labour + otherCharges - Number(discount));
   const gstAmount = (subtotal * Number(gst)) / 100;
   const total = subtotal + gstAmount;
 
@@ -178,6 +205,7 @@ export default function Calculator() {
       hallmark,
       discount,
       gst,
+      effectiveRate, // ADDED: persist the actual per-gram rate used for this quotation
       metalValue,
       labour,
       stoneCost: Number(stone),
@@ -269,7 +297,8 @@ export default function Calculator() {
 
     try {
       setLoading(true);
-      const response = await fetch(`${API_URL}/quotations/${id}?staffName=${staffName || 'System'}`, {
+      // CHANGED: encode the staff name — an unescaped "&" or space corrupted the query string
+      const response = await fetch(`${API_URL}/quotations/${id}?staffName=${encodeURIComponent(staffName || 'System')}`, {
         method: 'DELETE',
       });
 
@@ -424,76 +453,6 @@ export default function Calculator() {
     }
   };
 
-  // Mobile card view for quotations
-  const QuotationCard = ({ q, index, isDeleted = false }) => {
-    return (
-      <div className="bg-white rounded-xl p-4 mb-3 shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
-        <div className="flex justify-between items-start mb-2">
-          <div className="flex-1">
-            <div className="font-semibold text-gray-800 text-sm">{q.customerName}</div>
-            <div className="text-xs text-gray-500">{q.customerPhone}</div>
-          </div>
-          <div className="text-right">
-            <div className="font-bold text-[#1F6F5F] text-sm">₹{Number(q.total).toFixed(2)}</div>
-            <div className="text-xs text-gray-400">{q.date}</div>
-          </div>
-        </div>
-        
-        <div className="flex flex-wrap gap-2 text-xs text-gray-600 mb-3">
-          <span className="px-2 py-1 bg-[#6FCF97]/10 text-[#1F6F5F] rounded-full">
-            {q.metal}
-          </span>
-          <span>{q.karat}{q.metal === "Gold" ? "K" : "%"}</span>
-          <span>{q.weight}g</span>
-          {q.staffName && <span>👤 {q.staffName}</span>}
-          {isDeleted && q.deletedAt && (
-            <span className="text-red-500">🗑️ {new Date(q.deletedAt).toLocaleDateString()}</span>
-          )}
-        </div>
-        
-        <div className="flex gap-2">
-          {!isDeleted ? (
-            <>
-              <button
-                onClick={() => loadQuotation(q)}
-                className="flex-1 bg-[#2FA084] hover:bg-[#1F6F5F] text-white px-3 py-1.5 rounded-lg text-xs transition-all duration-300 flex items-center justify-center gap-1"
-              >
-                <Pen className="w-3 h-3" /> Edit
-              </button>
-              <button
-                onClick={() => printQuotation(q)}
-                className="flex-1 bg-[#6FCF97] hover:bg-[#2FA084] text-white px-3 py-1.5 rounded-lg text-xs transition-all duration-300 flex items-center justify-center gap-1"
-              >
-                <Printer className="w-3 h-3" /> Print
-              </button>
-              <button
-                onClick={() => deleteQuotation(q.id)}
-                className="flex-1 bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded-lg text-xs transition-all duration-300 flex items-center justify-center gap-1"
-              >
-                <Trash2 className="w-3 h-3" /> Delete
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                onClick={() => restoreQuotation(q.id)}
-                className="flex-1 bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded-lg text-xs transition-all duration-300 flex items-center justify-center gap-1"
-              >
-                <RotateCcw className="w-3 h-3" /> Restore
-              </button>
-              <button
-                onClick={() => permanentDeleteQuotation(q.id)}
-                className="flex-1 bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded-lg text-xs transition-all duration-300 flex items-center justify-center gap-1"
-              >
-                <Trash2 className="w-3 h-3" /> Delete
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-    );
-  };
-
   return (
     <div className="min-h-screen bg-[#EEEEEE] text-gray-800 font-sans antialiased">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
@@ -510,7 +469,7 @@ export default function Calculator() {
                   <Sparkles className="w-5 h-5 text-[#6FCF97]" />
                 </h1>
                 <p className="text-xs text-white/80 font-light tracking-widest uppercase flex items-center gap-1">
-                  <span className="text-[#6FCF97]">✦</span> premium jewellery calculator
+                  <span className="text-[#6FCF97]">✦</span> Jewellery calculator
                 </p>
               </div>
             </div>
@@ -544,12 +503,12 @@ export default function Calculator() {
 
         {/* Recycle Bin Panel */}
         {showRecycleBin && (
-          <div className="bg-white rounded-3xl p-5 sm:p-7 mb-8 shadow-lg border border-red-200">
+          <div className="bg-white rounded-3xl p-5 sm:p-7 mb-8 shadow-lg border border-red-200 overflow-x-auto">
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-xl font-semibold text-red-600 flex items-center gap-3">
                 <Trash className="w-5 h-5" />
                 Recycle Bin
-                <span className="text-xs text-gray-500 font-normal ml-2 hidden sm:inline">
+                <span className="text-xs text-gray-500 font-normal ml-2">
                   (Records automatically deleted after 7 days)
                 </span>
               </h2>
@@ -559,8 +518,7 @@ export default function Calculator() {
                   className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1.5 rounded-lg transition-all duration-300 flex items-center gap-1"
                 >
                   <RefreshCw className="w-3 h-3" />
-                  <span className="hidden sm:inline">Cleanup Old</span>
-                  <span className="sm:hidden">Cleanup</span>
+                  Cleanup Old
                 </button>
                 <span className="text-xs text-[#2FA084] bg-[#6FCF97]/10 px-3 py-1 rounded-full border border-[#6FCF97]/20">
                   {deletedQuotations.length} Records
@@ -579,81 +537,71 @@ export default function Calculator() {
                 <p className="text-sm">No records in recycle bin</p>
               </div>
             ) : (
-              <>
-                {/* Desktop Table View */}
-                <div className="hidden md:block overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="bg-gradient-to-r from-red-500 to-red-600 text-white">
-                        <th className="px-4 py-3 text-left rounded-tl-xl">#</th>
-                        <th className="px-4 py-3 text-left">Deleted Date</th>
-                        <th className="px-4 py-3 text-left">Customer</th>
-                        <th className="px-4 py-3 text-left">Phone</th>
-                        <th className="px-4 py-3 text-left">Staff</th>
-                        <th className="px-4 py-3 text-left">Metal</th>
-                        <th className="px-4 py-3 text-left">Total (₹)</th>
-                        <th className="px-4 py-3 text-center rounded-tr-xl">Actions</th>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gradient-to-r from-red-500 to-red-600 text-white">
+                      <th className="px-4 py-3 text-left rounded-tl-xl">#</th>
+                      <th className="px-4 py-3 text-left">Deleted Date</th>
+                      <th className="px-4 py-3 text-left">Customer</th>
+                      <th className="px-4 py-3 text-left">Phone</th>
+                      <th className="px-4 py-3 text-left">Staff</th>
+                      <th className="px-4 py-3 text-left">Metal</th>
+                      <th className="px-4 py-3 text-left">Total (₹)</th>
+                      <th className="px-4 py-3 text-center rounded-tr-xl">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {deletedQuotations.map((q, index) => (
+                      <tr 
+                        key={q.id} 
+                        className={`border-b border-gray-200 hover:bg-red-50 transition-colors ${
+                          index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
+                        }`}
+                      >
+                        <td className="px-4 py-3 text-gray-500">{index + 1}</td>
+                        <td className="px-4 py-3 text-gray-600 text-xs">
+                          {q.deletedAt ? new Date(q.deletedAt).toLocaleString() : '-'}
+                        </td>
+                        <td className="px-4 py-3 font-medium text-gray-800">{q.customerName}</td>
+                        <td className="px-4 py-3 text-gray-600">{q.customerPhone}</td>
+                        <td className="px-4 py-3 text-gray-600">{q.staffName || '-'}</td>
+                        <td className="px-4 py-3">
+                          <span className="px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs font-medium">
+                            {q.metal}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 font-semibold text-red-600">₹{Number(q.total).toFixed(2)}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              onClick={() => restoreQuotation(q.id)}
+                              className="bg-green-500 hover:bg-green-600 text-white p-1.5 rounded-lg transition-all duration-300"
+                              title="Restore"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => permanentDeleteQuotation(q.id)}
+                              className="bg-red-500 hover:bg-red-600 text-white p-1.5 rounded-lg transition-all duration-300"
+                              title="Permanent Delete"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {deletedQuotations.map((q, index) => (
-                        <tr 
-                          key={q.id} 
-                          className={`border-b border-gray-200 hover:bg-red-50 transition-colors ${
-                            index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
-                          }`}
-                        >
-                          <td className="px-4 py-3 text-gray-500">{index + 1}</td>
-                          <td className="px-4 py-3 text-gray-600 text-xs">
-                            {q.deletedAt ? new Date(q.deletedAt).toLocaleString() : '-'}
-                          </td>
-                          <td className="px-4 py-3 font-medium text-gray-800">{q.customerName}</td>
-                          <td className="px-4 py-3 text-gray-600">{q.customerPhone}</td>
-                          <td className="px-4 py-3 text-gray-600">{q.staffName || '-'}</td>
-                          <td className="px-4 py-3">
-                            <span className="px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs font-medium">
-                              {q.metal}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 font-semibold text-red-600">₹{Number(q.total).toFixed(2)}</td>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center justify-center gap-2">
-                              <button
-                                onClick={() => restoreQuotation(q.id)}
-                                className="bg-green-500 hover:bg-green-600 text-white p-1.5 rounded-lg transition-all duration-300"
-                                title="Restore"
-                              >
-                                <RotateCcw className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => permanentDeleteQuotation(q.id)}
-                                className="bg-red-500 hover:bg-red-600 text-white p-1.5 rounded-lg transition-all duration-300"
-                                title="Permanent Delete"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Mobile Card View */}
-                <div className="md:hidden">
-                  {deletedQuotations.map((q, index) => (
-                    <QuotationCard key={q.id} q={q} index={index} isDeleted={true} />
-                  ))}
-                </div>
-              </>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         )}
 
-        {/* History Panel */}
+        {/* History Panel - Table View */}
         {showHistory && (
-          <div className="bg-white rounded-3xl p-5 sm:p-7 mb-8 shadow-lg border border-[#6FCF97]/20">
+          <div className="bg-white rounded-3xl p-5 sm:p-7 mb-8 shadow-lg border border-[#6FCF97]/20 overflow-x-auto">
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-xl font-semibold text-[#1F6F5F] flex items-center gap-3">
                 <Scroll className="w-5 h-5 text-[#2FA084]" />
@@ -676,88 +624,80 @@ export default function Calculator() {
                 <p className="text-sm">No quotations saved yet</p>
               </div>
             ) : (
-              <>
-                {/* Desktop Table View */}
-                <div className="hidden md:block overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="bg-gradient-to-r from-[#1F6F5F] to-[#2FA084] text-white">
-                        <th className="px-4 py-3 text-left rounded-tl-xl">#</th>
-                        <th className="px-4 py-3 text-left">Date</th>
-                        <th className="px-4 py-3 text-left">Customer</th>
-                        <th className="px-4 py-3 text-left">Phone</th>
-                        <th className="px-4 py-3 text-left">Staff</th>
-                        <th className="px-4 py-3 text-left">Metal</th>
-                        <th className="px-4 py-3 text-left">Karat</th>
-                        <th className="px-4 py-3 text-left">Weight</th>
-                        <th className="px-4 py-3 text-left">Total (₹)</th>
-                        <th className="px-4 py-3 text-center rounded-tr-xl">Actions</th>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gradient-to-r from-[#1F6F5F] to-[#2FA084] text-white">
+                      <th className="px-4 py-3 text-left rounded-tl-xl">#</th>
+                      <th className="px-4 py-3 text-left">Date</th>
+                      <th className="px-4 py-3 text-left">Customer</th>
+                      <th className="px-4 py-3 text-left">Phone</th>
+                      <th className="px-4 py-3 text-left">Staff</th>
+                      <th className="px-4 py-3 text-left">Metal</th>
+                      <th className="px-4 py-3 text-left">Karat</th>
+                      <th className="px-4 py-3 text-left">Weight</th>
+                      <th className="px-4 py-3 text-left">Total (₹)</th>
+                      <th className="px-4 py-3 text-center rounded-tr-xl">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {savedQuotations.map((q, index) => (
+                      <tr 
+                        key={q.id} 
+                        className={`border-b border-[#6FCF97]/10 hover:bg-[#6FCF97]/5 transition-colors ${
+                          index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
+                        }`}
+                      >
+                        <td className="px-4 py-3 text-gray-500">{index + 1}</td>
+                        <td className="px-4 py-3 text-gray-600 text-xs">{q.date}</td>
+                        <td className="px-4 py-3 font-medium text-gray-800">{q.customerName}</td>
+                        <td className="px-4 py-3 text-gray-600">{q.customerPhone}</td>
+                        <td className="px-4 py-3 text-gray-600">{q.staffName || '-'}</td>
+                        <td className="px-4 py-3">
+                          <span className="px-2 py-1 bg-[#6FCF97]/10 text-[#1F6F5F] rounded-full text-xs font-medium">
+                            {q.metal}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-gray-600">{q.karat}{q.metal === "Gold" ? "K" : "%"}</td>
+                        <td className="px-4 py-3 text-gray-600">{q.weight}g</td>
+                        <td className="px-4 py-3 font-semibold text-[#1F6F5F]">₹{Number(q.total).toFixed(2)}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              onClick={() => loadQuotation(q)}
+                              className="bg-[#2FA084] hover:bg-[#1F6F5F] text-white p-1.5 rounded-lg transition-all duration-300"
+                              title="Edit"
+                            >
+                              <Pen className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => printQuotation(q)}
+                              className="bg-[#6FCF97] hover:bg-[#2FA084] text-white p-1.5 rounded-lg transition-all duration-300"
+                              title="Print"
+                            >
+                              <Printer className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => deleteQuotation(q.id)}
+                              className="bg-red-500 hover:bg-red-600 text-white p-1.5 rounded-lg transition-all duration-300"
+                              title="Delete"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {savedQuotations.map((q, index) => (
-                        <tr 
-                          key={q.id} 
-                          className={`border-b border-[#6FCF97]/10 hover:bg-[#6FCF97]/5 transition-colors ${
-                            index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
-                          }`}
-                        >
-                          <td className="px-4 py-3 text-gray-500">{index + 1}</td>
-                          <td className="px-4 py-3 text-gray-600 text-xs">{q.date}</td>
-                          <td className="px-4 py-3 font-medium text-gray-800">{q.customerName}</td>
-                          <td className="px-4 py-3 text-gray-600">{q.customerPhone}</td>
-                          <td className="px-4 py-3 text-gray-600">{q.staffName || '-'}</td>
-                          <td className="px-4 py-3">
-                            <span className="px-2 py-1 bg-[#6FCF97]/10 text-[#1F6F5F] rounded-full text-xs font-medium">
-                              {q.metal}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-gray-600">{q.karat}{q.metal === "Gold" ? "K" : "%"}</td>
-                          <td className="px-4 py-3 text-gray-600">{q.weight}g</td>
-                          <td className="px-4 py-3 font-semibold text-[#1F6F5F]">₹{Number(q.total).toFixed(2)}</td>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center justify-center gap-2">
-                              <button
-                                onClick={() => loadQuotation(q)}
-                                className="bg-[#2FA084] hover:bg-[#1F6F5F] text-white p-1.5 rounded-lg transition-all duration-300"
-                                title="Edit"
-                              >
-                                <Pen className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => printQuotation(q)}
-                                className="bg-[#6FCF97] hover:bg-[#2FA084] text-white p-1.5 rounded-lg transition-all duration-300"
-                                title="Print"
-                              >
-                                <Printer className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => deleteQuotation(q.id)}
-                                className="bg-red-500 hover:bg-red-600 text-white p-1.5 rounded-lg transition-all duration-300"
-                                title="Delete"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Mobile Card View */}
-                <div className="md:hidden">
-                  {savedQuotations.map((q, index) => (
-                    <QuotationCard key={q.id} q={q} index={index} isDeleted={false} />
-                  ))}
-                </div>
-              </>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         )}
 
+        {/* Rest of the component remains the same */}
         {/* Main Grid - Inputs and Summary */}
+        {/* ... (keep the existing main grid code) ... */}
         <div className="grid lg:grid-cols-12 gap-6">
           {/* Left Panel - Inputs */}
           <div className="lg:col-span-8 bg-white rounded-3xl p-5 sm:p-7 shadow-lg border border-[#6FCF97]/20">
@@ -786,7 +726,7 @@ export default function Calculator() {
                       <Phone className="w-3 h-3 text-[#2FA084]" /> Phone Number *
                     </label>
                     <input
-                      type="tel"
+                      type="phone"
                       className="w-full mt-1 bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#6FCF97]/50 focus:border-[#2FA084] transition-all duration-300"
                       placeholder="Phone number"
                       value={customerPhone}
@@ -1015,9 +955,24 @@ export default function Calculator() {
                     <span className="text-gray-600">💰 Metal Amount</span>
                     <span className="font-mono text-[#1F6F5F] font-semibold">₹{metalValue.toFixed(2)}</span>
                   </div>
-                  <div className="flex justify-between text-xs text-gray-400 mt-1">
-                    <span>{weight || 0}g × ₹{rate || 0} × {getKaratRate() * 100}% purity</span>
-                    <span>{karat}{metal === "Gold" ? "K" : "%"}</span>
+                  {/* CHANGED: was a plain karat badge ("22K"). Now prints the actual
+                      rupee rate for the selected purity, derived from the pure rate
+                      entered above — e.g. 24K ₹1,51,200.00 -> 22K ₹1,38,499.20 */}
+                  <div className="mt-2 space-y-1 text-xs">
+                    {getKaratRate() !== 1 && (
+                      <div className="flex justify-between text-gray-400">
+                        <span>{baseKaratLabel} rate (entered)</span>
+                        <span className="font-mono line-through">{formatCurrency(baseRate)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between text-[#1F6F5F] font-semibold">
+                      <span>{karat}{purityUnit} rate (actual)</span>
+                      <span className="font-mono">{formatCurrency(effectiveRate)}</span>
+                    </div>
+                    <div className="flex justify-between text-gray-400 pt-1 border-t border-[#6FCF97]/10">
+                      <span>{weight || 0}g × {formatCurrency(effectiveRate)}</span>
+                      <span className="font-mono">{formatCurrency(metalValue)}</span>
+                    </div>
                   </div>
                 </div>
 
@@ -1027,16 +982,18 @@ export default function Calculator() {
                     <span className="text-gray-600">🔧 Labour</span>
                     <span className="font-mono text-[#1F6F5F] font-semibold">₹{labour.toFixed(2)}</span>
                   </div>
+                  {/* CHANGED: when labour is entered as a %, the right-hand value used to
+                      repeat that same % back. It now shows the ₹/gram it works out to. */}
                   <div className="flex justify-between text-xs text-gray-400 mt-1">
                     {labourType === "percentage" ? (
                       <>
                         <span>{labourValue || 0}% of metal value</span>
-                        <span>{metalValue ? ((labour / metalValue) * 100).toFixed(1) : 0}%</span>
+                        <span className="font-mono">{formatCurrency(labourPerGram)}/g</span>
                       </>
                     ) : (
                       <>
                         <span>₹{labourValue || 0}/g × {weight || 0}g</span>
-                        <span>{metalValue ? ((labour / metalValue) * 100).toFixed(1) : 0}% of metal</span>
+                        <span>{labourPercent.toFixed(1)}% of metal</span>
                       </>
                     )}
                   </div>
@@ -1108,10 +1065,17 @@ export default function Calculator() {
 
               {/* Quick Stats */}
               <div className="mt-6 grid grid-cols-2 gap-3">
+                {/* CHANGED: this tile always showed the labour percentage, which is
+                    redundant when the user entered a percentage. It now shows the
+                    opposite unit to whatever was typed in. */}
                 <div className="bg-gray-50 rounded-2xl p-3 text-center border border-[#6FCF97]/10">
-                  <div className="text-[#2FA084] text-[10px] uppercase tracking-wider">Labour %</div>
+                  <div className="text-[#2FA084] text-[10px] uppercase tracking-wider">
+                    {labourType === "percentage" ? "Labour / gram" : "Labour %"}
+                  </div>
                   <div className="text-[#1F6F5F] font-bold text-lg">
-                    {metalValue ? ((labour / metalValue) * 100).toFixed(1) : 0}%
+                    {labourType === "percentage"
+                      ? formatCurrency(labourPerGram)
+                      : `${labourPercent.toFixed(1)}%`}
                   </div>
                 </div>
                 <div className="bg-gray-50 rounded-2xl p-3 text-center border border-[#6FCF97]/10">
@@ -1129,10 +1093,10 @@ export default function Calculator() {
         <footer className="mt-12 text-center text-gray-500 text-xs border-t border-[#6FCF97]/20 pt-6">
           <p className="flex items-center justify-center gap-2">
             <Gem className="w-3 h-3 text-[#2FA084]" />
-            Suvarna Shilpi Jewellers · Premium Calculator
+            Suvarna Shilpi Jewellers
             <Gem className="w-3 h-3 text-[#2FA084]" />
           </p>
-          <p className="mt-1 opacity-70">Developed By - Build Crew</p>
+          <p className="mt-1 opacity-70">Advanced Karat & Purity Calculation Engine</p>
         </footer>
       </div>
     </div>

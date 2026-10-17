@@ -1,0 +1,10 @@
+node_modules
+
+# Secrets — never commit. Use .env.example as the template.
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
